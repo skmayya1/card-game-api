@@ -1,18 +1,22 @@
-import { Request, Response } from "express";
+import http from 'http';
+import dotenv from 'dotenv';
+import { Server } from 'socket.io';
 import Prisma from "./lib/Prisma";
 
-const express = require('express');
-const dotenv = require('dotenv');
-
 dotenv.config();
-
-const app = express();
-const port = process.env.PORT;
-
-app.get('/', (req: Request, res: Response) => {
-    res.send('Express + TypeScript Server');
+const httpserver = http.createServer();
+const io = new Server(httpserver, {
+    cors: {
+        origin: '*',
+        allowedHeaders: '*',
+    },
 });
 
-app.listen(port, () => {
-    console.log(`[server]: Server is running at http://localhost:${port}`);
+const port :number = process.env.PORT as unknown as number;
+
+
+httpserver.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
 });
+
+export default io;
