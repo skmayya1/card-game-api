@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import Prisma from "./lib/Prisma";
 
 const express = require('express');
 const dotenv = require('dotenv');
