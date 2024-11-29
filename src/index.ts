@@ -2,7 +2,6 @@ import dotenv from "dotenv";
 import { Server } from "socket.io";
 import Prisma from "./lib/Prisma";
 import http from "http";
-import cors from "cors";
 
 dotenv.config();
 
@@ -20,46 +19,70 @@ const io = new Server(httpServer, {
 
 io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
-
-    socket.on("join-room", (data) => {
+    socket.on("join-room", async (data) => {
         console.log("User joining room:", data);
         socket.join(data.roomID);
         socket.to(data.roomID).emit("user-connected", data);
 
-        const usersInRoom = Array.from(io.sockets.adapter.rooms.get(data.roomID) || []);
-        io.to(data.roomID).emit("room-users", { users: usersInRoom });
+        try {
+            // Check if the room exists
+            let Id;
+            const Room = await Prisma.room.findUnique({
+                where: { roomID: data.roomID },
+                select: { id: true },
+            });
+
+            // If the room exists, use its ID, else create a new room
+            if (Room) {
+                Id = Room.id;
+            } else {
+                const room = await Prisma.room.create({
+                    data: { roomID: data.roomID },
+                    select: { id: true },
+                });
+                Id = room.id;
+            }
+            console.log("Room upserted with ID:", Id);
+
+            // Update user with the room's primary key ID
+            const updateRoom = await Prisma.user.update({
+                where: { email: data.email },
+                data: { roomID: Id },
+            });
+            console.log("User updated with room ID:", updateRoom);
+
+            // Fetch all users in the room
+            const roomUsers = await Prisma.user.findMany({
+                where: { roomID: Id },
+                select: { id: true, name: true, email: true, picture: true },
+            });
+
+            // Emit the room users to the room
+            io.to(data.roomID).emit("room-users", { users: roomUsers });
+        } catch (error) {
+            console.error("Error joining room:", error);
+            socket.emit("error", "Failed to join room");
+        }
     });
+
+
 
     socket.on("auth", async (data) => {
         const { name, email, picture } = data;
 
         try {
-            // Check if user exists
-            let user = await Prisma.user.findUnique({
+            let user = await Prisma.user.upsert({
                 where: { email },
+                update: { name, picture },
+                create: { name, email, picture },
             });
-            
-            if (user) {
-                // If user exists, update their information
-                user = await Prisma.user.update({
-                    where: { email },
-                    data: { name, picture },
-                });
-            } else {
-                // If user doesn't exist, create a new user
-                user = await Prisma.user.create({
-                    data: { name, email, picture },
-                });
-            }
 
-            // Send the user info back
             socket.emit("user", user);
         } catch (error) {
             console.error(error);
             socket.emit("error", "Failed to authenticate user");
         }
     });
-
 
     socket.on("disconnect", () => {
         console.log("User disconnected:", socket.id);
